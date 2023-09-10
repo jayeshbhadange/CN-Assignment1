@@ -7,3 +7,9 @@ sudo ./a <br>
 
 On another terminal, use the following commands to replay the packets from 0.pcap:<br>
 sudo tcpreplay -v --mbps=3 -i <network_interface> 0.pcap <br>
+
+<br>
+
+The captured packet info and the soure IP, destination IP, source port and destination port will
+all be stored in log.txt.
+
