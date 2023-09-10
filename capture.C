@@ -1,128 +1,180 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <net/if.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
+#include<netinet/in.h>
+#include<errno.h>
+#include<netdb.h>
+#include<stdio.h>	//For standard things
+#include<stdlib.h>	//malloc
+#include<string.h>	//strlen
 
-struct tcp_flow{
-    in_addr saddr;
-    in_addr daddr;
-    unsigned short sport;
-    unsigned short dport;
-};
+#include<netinet/udp.h>	//Provides declarations for udp header
+#include<netinet/tcp.h>	//Provides declarations for tcp header
+#include<netinet/ip.h>	//Provides declarations for ip header
+#include<netinet/if_ether.h>	//For ETH_P_ALL
+#include<net/ethernet.h>	//For ether_header
+#include<sys/socket.h>
+#include<arpa/inet.h>
+#include<sys/ioctl.h>
+#include<sys/time.h>
+#include<sys/types.h>
+#include<unistd.h>
 
-struct tcp_flow_node{
-    struct tcp_flow flow;
-    int packets;
-    int bytes;
-    struct tcp_flow_node *next;
-};
+void ProcessPacket(unsigned char* , int);
+void print_ip_header(unsigned char* , int);
+void print_tcp_packet(unsigned char * , int );
+void print_udp_packet(unsigned char * , int );
+//void PrintData (unsigned char* , int);
 
-struct tcp_flow_node *head = NULL;
+FILE *logfile;
+struct sockaddr_in source,dest;
+int tcp=0,udp=0,icmp=0,others=0,igmp=0,total=0,i,j;	
 
-void add_flow(struct tcp_flow *flow, int data_size){
-    struct tcp_flow_node *node = head;
-    while(node != NULL){
-        if (memcmp(&node->flow, flow, sizeof(struct tcp_flow)) == 0){
-            node->packets++;
-            node->bytes += data_size;
-            return;
-        }
-        node = node->next;
-    }
-
-    node =  (struct tcp_flow_node*)malloc(sizeof(struct tcp_flow_node));
-    if (node == NULL) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-    }
-    memcpy(&node->flow, flow, sizeof(struct tcp_flow));
-    node->packets = 1;
-    node->bytes = data_size;
-    node->next = head;
-    head = node;
+int main()
+{
+	int saddr_size , data_size;
+	struct sockaddr saddr;
+		
+	unsigned char *buffer = (unsigned char *) malloc(65536); //Its Big!
+	
+	logfile=fopen("log8.txt","w");
+	if(logfile==NULL) 
+	{
+		printf("Unable to create log.txt file.");
+	}
+	printf("Starting...\n");
+	
+	int sock_raw = socket( AF_PACKET , SOCK_RAW , htons(ETH_P_ALL)) ;
+	
+	
+	if(sock_raw < 0)
+	{
+		//Print the error with proper message
+		perror("Socket Error");
+		return 1;
+	}
+	while(1)
+	{
+		saddr_size = sizeof saddr;
+		//Receive a packet
+		data_size = recvfrom(sock_raw , buffer , 65536 , 0 , &saddr , (socklen_t*)&saddr_size);
+		if(data_size <0 )
+		{
+			printf("Recvfrom error , failed to get packets\n");
+			return 1;
+		}
+		//Now process the packet
+		ProcessPacket(buffer , data_size);
+	}
+	close(sock_raw);
+	printf("Finished");
+	return 0;
 }
 
-void print_flows(){
-    struct tcp_flow_node *node = head;
-    while(node!=NULL){
-        printf("Flow from %s:%d to %s:%d has %d packets and %d bytes\n", 
-        inet_ntoa(node->flow.saddr), ntohs(node->flow.sport), inet_ntoa(node->flow.daddr), 
-        ntohs(node->flow.dport), node->packets, node->bytes);
-        node = node->next;
-    }
+void ProcessPacket(unsigned char* buffer, int size)
+{
+	//Get the IP Header part of this packet , excluding the ethernet header
+	struct iphdr *iph = (struct iphdr*)(buffer + sizeof(struct ethhdr));
+	++total;
+	switch (iph->protocol) //Check the Protocol and do accordingly...
+	{
+	
+		
+	
+		case 6:  //TCP Protocol
+			++tcp;
+			print_tcp_packet(buffer , size);
+			break;
+		
+		case 17: //UDP Protocol
+			++udp;
+			print_udp_packet(buffer , size);
+			break;
+		
+		default: //Some Other Protocol like ARP etc.
+			++others;
+			break;
+	}
+	printf("TCP : %d   UDP : %d    Others : %d   Total : %d\r", tcp , udp , others , total);
 }
 
-void free_flows(){
-    struct tcp_flow_node *node = head;
-    struct tcp_flow_node *temp;
-    while (node != NULL) {
-        temp = node->next;
-        free(node);
-        node = temp;
-    }
+/*void print_ethernet_header(unsigned char* Buffer, int Size)
+{
+	struct ethhdr *eth = (struct ethhdr *)Buffer;
+	
+	fprintf(logfile , "\n");
+	fprintf(logfile , "Ethernet Header\n");
+	fprintf(logfile , "   |-Destination Address : %.2X-%.2X-%.2X-%.2X-%.2X-%.2X \n", eth->h_dest[0] , eth->h_dest[1] , eth->h_dest[2] , eth->h_dest[3] , eth->h_dest[4] , eth->h_dest[5] );
+	fprintf(logfile , "   |-Source Address      : %.2X-%.2X-%.2X-%.2X-%.2X-%.2X \n", eth->h_source[0] , eth->h_source[1] , eth->h_source[2] , eth->h_source[3] , eth->h_source[4] , eth->h_source[5] );
+}*/
+
+void print_ip_header(unsigned char* Buffer, int Size)
+{
+	//print_ethernet_header(Buffer , Size);
+  
+	unsigned short iphdrlen;
+		
+	struct iphdr *iph = (struct iphdr *)(Buffer  + sizeof(struct ethhdr) );
+	iphdrlen =iph->ihl*4;
+	
+	memset(&source, 0, sizeof(source));
+	source.sin_addr.s_addr = iph->saddr;
+	
+	memset(&dest, 0, sizeof(dest));
+	dest.sin_addr.s_addr = iph->daddr;
+	
+	fprintf(logfile , "\n");
+	fprintf(logfile , "IP Header\n");
+	fprintf(logfile , "   |-Source IP        : %s\n",inet_ntoa(source.sin_addr));
+	fprintf(logfile , "   |-Destination IP   : %s\n",inet_ntoa(dest.sin_addr));
 }
 
-#define BUFSIZE 65536 // maximum packet size
-unsigned char buffer[BUFSIZE]; // buffer to store packet data
-struct sockaddr_in source, dest; // structures to store source and destination addresses
-struct iphdr *iph; // pointer to IP header
-struct tcphdr *tcph; // pointer to TCP header
-int data_size; // number of bytes received
+void print_tcp_packet(unsigned char* Buffer, int Size)
+{
+	unsigned short iphdrlen;
+	
+	struct iphdr *iph = (struct iphdr *)( Buffer  + sizeof(struct ethhdr) );
+	iphdrlen = iph->ihl*4;
+	 
+	struct tcphdr *tcph=(struct tcphdr*)(Buffer + iphdrlen + sizeof(struct ethhdr));
+			
+	int header_size =  sizeof(struct ethhdr) + iphdrlen + tcph->doff*4;
+	
+	fprintf(logfile , "\n\n***********************TCP Packet*************************\n");	
+		
+	print_ip_header(Buffer,Size);
+		
+	fprintf(logfile , "\n");
+	fprintf(logfile , "TCP Header\n");
+	fprintf(logfile , "   |-Source Port      : %u\n",ntohs(tcph->source));
+	fprintf(logfile , "   |-Destination Port : %u\n",ntohs(tcph->dest));
+		
+		
+		
+	fprintf(logfile , "\n###########################################################");
+}
 
-
-int main(){
-    int sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
-    if (sock == -1) {
-        perror("socket");
-        exit(EXIT_FAILURE);
-    }
-
-    struct ifreq ifr;
-    memset(&ifr, 0, sizeof(ifr));
-    strcpy(ifr.ifr_name, "wlo1");
-    if (ioctl(sock, SIOCGIFFLAGS, &ifr) == -1) {
-        perror("ioctl");
-        exit(EXIT_FAILURE);
-    }
-    ifr.ifr_flags |= IFF_PROMISC;
-    if (ioctl(sock, SIOCSIFFLAGS, &ifr) == -1) {
-        perror("ioctl");
-        exit(EXIT_FAILURE);
-    }
-    
-    data_size = recvfrom(sock, buffer, BUFSIZE, 0, NULL, NULL);
-    int n=0;
-    while(n<50){
-        if(data_size!=-1){
-            iph = (struct iphdr*) buffer;
-
-            struct tcp_flow flow;
-            flow.saddr = *(struct in_addr*)(&(iph->saddr));
-            flow.daddr = *(struct in_addr*)(&(iph->daddr));
-
-            tcph = (struct tcphdr*) (buffer + iph->ihl * 4);
-            flow.sport = tcph->source;
-            flow.dport = tcph->dest;
-            add_flow(&flow, data_size);
-
-            source.sin_addr.s_addr = iph->saddr; // get the source IP address
-            dest.sin_addr.s_addr = iph->daddr; // get the destination IP address
-            printf("Packet from %s:%d to %s:%d\n", 
-            inet_ntoa(source.sin_addr), ntohs(tcph->source), 
-            inet_ntoa(dest.sin_addr), ntohs(tcph->dest));
-        }
-        else printf("%d\n", data_size);
-        data_size = recvfrom(sock, buffer, BUFSIZE, 0, NULL, NULL);
-        n++;
-    }
-
-    //print_flows();
-
-    return 0;
+void print_udp_packet(unsigned char *Buffer , int Size)
+{
+	
+	unsigned short iphdrlen;
+	
+	struct iphdr *iph = (struct iphdr *)(Buffer +  sizeof(struct ethhdr));
+	iphdrlen = iph->ihl*4;
+	
+	struct udphdr *udph = (struct udphdr*)(Buffer + iphdrlen  + sizeof(struct ethhdr));
+	
+	int header_size =  sizeof(struct ethhdr) + iphdrlen + sizeof udph;
+	
+	fprintf(logfile , "\n\n***********************UDP Packet*************************\n");
+	
+	print_ip_header(Buffer,Size);			
+	
+	fprintf(logfile , "\nUDP Header\n");
+	fprintf(logfile , "   |-Source Port      : %d\n" , ntohs(udph->source));
+	fprintf(logfile , "   |-Destination Port : %d\n" , ntohs(udph->dest));
+	
+	fprintf(logfile , "\n");
+		
+	
+	//PrintData(Buffer + header_size , Size - header_size);
+	
+	fprintf(logfile , "\n###########################################################");
 }
