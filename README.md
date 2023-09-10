@@ -30,6 +30,15 @@ On another terminal, use the following commands to replay the packets from 0.pca
 sudo tcpreplay -v --mbps=3 -i <network_interface> 3.pcap <br>
 
 Answers for part2 CTF can be viewed in ctfans.pdf
+
+## Part 3
+Run the file part3.c
+It will run for 30 sec and sniff all the packets for that duration.
+It links the client application TCP port number to the corresponding process ID of that application
+It will store the corresponding procesID in the log file
+
+## Part 4
+Answer to all the questions can be found in PART IV.pdf
 ## Reference
 https://www.binarytides.com/packet-sniffer-code-in-c-using-linux-sockets-bsd-part-2/
 
