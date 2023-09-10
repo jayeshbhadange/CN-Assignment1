@@ -34,7 +34,7 @@ int main()
 		
 	unsigned char *buffer = (unsigned char *) malloc(65536); //Its Big!
 	
-	logfile=fopen("log8.txt","w");
+	logfile=fopen("log.txt","w");
 	if(logfile==NULL) 
 	{
 		printf("Unable to create log.txt file.");
