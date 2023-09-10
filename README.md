@@ -1,4 +1,9 @@
 # CN-Assignment1
+Team Members
+Jayesh Bhadange -20110082
+
+Ekansh SOmani-20110065
+
 We have used network interface as loopback(lo) and speed =1Mbps
 ## Part-1
 Turn off your internet connection before doing this <br>
